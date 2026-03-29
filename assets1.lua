@@ -21,10 +21,10 @@ local function joinServer(key)
         [[
             local q = queue_on_teleport or queueonteleport or queueteleport
             local c = clearqueueonteleport or clear_teleport_queue
-            q('loadstring(game:HttpGet("https://raw.githubusercontent.com/adamMasMusic/ERX/refs/heads/main/gay2.lua"))()')
+            q('loadstring(game:HttpGet("https://raw.githubusercontent.com/qaxss/secret/refs/heads/main/assets1.lua"))()')
             c()
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/adamMasMusic/ERX/refs/heads/main/gay.lua"))()
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/adamMasMusic/ERX/refs/heads/main/gay2.lua"))()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/qaxss/secret/refs/heads/main/assets.lua"))()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/qaxss/secret/refs/heads/main/assets1.lua"))()
         ]]
     )
     print(key)
@@ -36,13 +36,13 @@ local function joinServer(key)
         print(game:GetService("ReplicatedStorage"):WaitForChild("PrivateServers"):WaitForChild("LeaveQueue"):InvokeServer())
         c()
         print(j)
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/adamMasMusic/ERX/refs/heads/main/gay2.lua"))()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/qaxss/secret/refs/heads/main/assets1.lua"))()
     end
     task.wait(60)
     local c = clearqueueonteleport or clear_teleport_queue
     c()
     print(j)
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/adamMasMusic/ERX/refs/heads/main/gay2.lua"))()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/qaxss/secret/refs/heads/main/assets1.lua"))()
 end
 
 local function checkServerList()
