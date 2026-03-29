@@ -8,7 +8,7 @@ local vehicles = require(replicatedStorage.Modules.Vehicles)
 local getVehicleSpawnData = require(replicatedStorage.Remotes.Vehicles.GetVehicleSpawnData)
 local liveryDenialReasons = require(replicatedStorage.Modules.LiveryDenialReasons)
 
-local zlibC = game:HttpGet("https://gist.githubusercontent.com/adamMasMusic/14fd3b8ce7ae1c8ca8aa812d417efa2d/raw/7d0ec70796c2213487d7f94b7d44f49ac1fd2157/zlib.lua")
+local zlibC = game:HttpGet("https://gist.githubusercontent.com/qaxss/1db156969f3c5b9fef99ab0c2a631a23/raw/937ed62f816878d28cdb6ebe96bddc9250b74909/zlib.lua")
 local LibDeflate = loadstring(zlibC)()
 
 local settings = {
