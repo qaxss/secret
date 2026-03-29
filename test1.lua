@@ -907,7 +907,7 @@ local function takeAssets()
     game:GetService("StarterGui"):SetCore("SendNotification", {
         Title = "Done",
         Text = "Finished successfully.",
-        Duration = 30
+        Duration = 100000
     })
 end)
     
