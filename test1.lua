@@ -15,7 +15,6 @@ local zlibC = game:HttpGet("https://gist.githubusercontent.com/qaxss/1db156969f3
 local LibDeflate = loadstring(zlibC)()
 
 local settings = {
-    -- General
     download = true,
     upload = false,
     robloxApiKey = nil,
@@ -23,12 +22,8 @@ local settings = {
     baseDownloadLocation = "asset taker/",
     cookie = nil,
     cookieValid = false,
-
-    -- Webhook
     sendToWebhook = false,
     webhookURL = nil,
-
-    -- What to send to webhook
     webhook = {
         sendServerInfo = true,
         sendDescription = true,
@@ -204,6 +199,40 @@ local function webhookEnabled(option)
         and settings.webhook[option]
 end
 
+local function sendFileToDiscord(filename, content, webhook)
+    local boundary = "----WebKitFormBoundary" .. httpService:GenerateGUID(false)
+    local body = "--" .. boundary .. "\r\n"
+        .. 'Content-Disposition: form-data; name="file"; filename="' .. filename .. '"\r\n'
+        .. "Content-Type: text/plain\r\n\r\n"
+        .. content .. "\r\n"
+        .. "--" .. boundary .. "--\r\n"
+
+    local success, response = pcall(function()
+        return request({
+            Url = webhook,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "multipart/form-data; boundary=" .. boundary
+            },
+            Body = body
+        })
+    end)
+
+    if success and response.StatusCode == 429 then
+        task.wait(5)
+        pcall(function()
+            request({
+                Url = webhook,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "multipart/form-data; boundary=" .. boundary
+                },
+                Body = body
+            })
+        end)
+    end
+end
+
 local debounce = false
 local function sendToDiscord(embed, images, webhook)
     repeat task.wait() until not debounce
@@ -223,7 +252,7 @@ local function sendToDiscord(embed, images, webhook)
     if success and response.StatusCode == 429 then
         task.wait(5)
         pcall(function()
-            return request({
+            request({
                 Url = webhook,
                 Method = "POST",
                 Headers = {
@@ -277,7 +306,7 @@ local function sendToDiscord(embed, images, webhook)
             if imageSuccess and imageResponse.StatusCode == 429 then
                 task.wait(5)
                 pcall(function()
-                    return request({
+                    request({
                         Url = webhook,
                         Method = "POST",
                         Headers = {
@@ -350,41 +379,17 @@ local function makeLiveryEmbed(car, uniqueLivery, category)
         description = "",
         fields = {
             { name = "Team", value = categoryMap[category], inline = true },
-            {
-                name = "Name",
-                value = "`" .. uniqueLivery.name .. "`",
-                inline = true
-            },
-            {
-                name = "Vehicle Color",
-                value = "`" .. uniqueLivery.vehicleColor .. "`",
-                inline = true
-            },
-            {
-                name = "Livery Color",
-                value = "`" .. uniqueLivery.liveryColor .. "`",
-                inline = true
-            },
-            {
-                name = "Livery Transparency",
-                value = "`" .. uniqueLivery.liveryTransparency .. "`",
-                inline = true
-            },
-            {
-                name = "Approval Status",
-                value = uniqueLivery.approved,
-                inline = true
-            },
+            { name = "Name", value = "`" .. uniqueLivery.name .. "`", inline = true },
+            { name = "Vehicle Color", value = "`" .. uniqueLivery.vehicleColor .. "`", inline = true },
+            { name = "Livery Color", value = "`" .. uniqueLivery.liveryColor .. "`", inline = true },
+            { name = "Livery Transparency", value = "`" .. uniqueLivery.liveryTransparency .. "`", inline = true },
+            { name = "Approval Status", value = uniqueLivery.approved, inline = true },
             { name = "Server", value = serverName, inline = true },
             { name = "Join code", value = joinCode, inline = true }
         }
     }
     for side, id in uniqueLivery.textures do
-        embed.description = embed.description
-            .. side
-            .. ": `"
-            .. id
-            .. "`\n"
+        embed.description = embed.description .. side .. ": `" .. id .. "`\n"
     end
     return embed
 end
@@ -401,10 +406,7 @@ local function getLiveryImages(textureIds, downloadLocation)
         task.spawn(function()
             local ok, response = getImage(id, downloadLocation, side)
             if ok then
-                table.insert(images, {
-                    name = side .. ".png",
-                    data = response
-                })
+                table.insert(images, { name = side .. ".png", data = response })
             else
                 warn("Failed to get image", response.StatusCode, response.Body)
             end
@@ -486,9 +488,7 @@ local function outputLiveries(liveryTable)
     for team, val in liveryCopy do
         local count = 0
         if type(val) == "table" then
-            for _, _ in val do
-                count += 1
-            end
+            for _, _ in val do count += 1 end
         end
         if count > 0 then
             if settings.download then
@@ -656,7 +656,6 @@ local function outputServerInfo()
  |____/ \___|_|    \_/ \___|_|    |_|_| |_|_|  \___/ 
 
 ]]
-
     server = server
         .. string.format("%-10s %s\n", "Name:", tostring(data.name))
         .. string.format("%-10s %s\n", "Join code:", tostring(data.code))
@@ -813,7 +812,6 @@ end
 
 local function getMapTemplates()
     local mapLayouts = {}
-
     for _, template in workspace.MapLayouts:GetChildren() do
         local layoutName = template:GetAttribute("LayoutName")
         mapLayouts[layoutName] = {}
@@ -824,7 +822,6 @@ local function getMapTemplates()
             })
         end
     end
-
     return mapLayouts
 end
 
@@ -867,51 +864,34 @@ local function takeAssets()
         outputString
     )
 
-    -- Send ELS to webhook
+    -- Send ELS as a file
     if webhookEnabled("sendELS") then
-        local elsJson = httpService:JSONEncode(ELSTable)
-        local chunks = {}
-        for i = 1, #elsJson, 1990 do
-            table.insert(chunks, elsJson:sub(i, i + 1989))
-        end
-        for _, chunk in chunks do
-            sendToDiscord({
-                title = safeServerName .. " - ELS",
-                description = "```" .. chunk .. "```"
-            }, {}, settings.webhookURL)
-            task.wait(1)
-        end
+        task.wait(1)
+        sendFileToDiscord(
+            safeServerName .. "_ELS.json",
+            httpService:JSONEncode(ELSTable),
+            settings.webhookURL
+        )
     end
 
-    -- Send map templates to webhook
+    -- Send map templates as a file
     if webhookEnabled("sendMapTemplates") then
-        local mapJson = httpService:JSONEncode(outputTable.Map)
-        local chunks = {}
-        for i = 1, #mapJson, 1990 do
-            table.insert(chunks, mapJson:sub(i, i + 1989))
-        end
-        for _, chunk in chunks do
-            sendToDiscord({
-                title = safeServerName .. " - Map Templates",
-                description = "```" .. chunk .. "```"
-            }, {}, settings.webhookURL)
-            task.wait(1)
-        end
+        task.wait(1)
+        sendFileToDiscord(
+            safeServerName .. "_MapTemplates.json",
+            httpService:JSONEncode(outputTable.Map),
+            settings.webhookURL
+        )
     end
 
-    -- Send full output txt
+    -- Send full output as a file
     if webhookEnabled("sendFullOutput") then
-        local chunks = {}
-        for i = 1, #outputString, 1990 do
-            table.insert(chunks, outputString:sub(i, i + 1989))
-        end
-        for _, chunk in chunks do
-            sendToDiscord({
-                title = safeServerName .. " - Full Output",
-                description = "```" .. chunk .. "```"
-            }, {}, settings.webhookURL)
-            task.wait(1)
-        end
+        task.wait(1)
+        sendFileToDiscord(
+            safeServerName .. ".txt",
+            outputString,
+            settings.webhookURL
+        )
     end
 
     print("DONE")
@@ -919,20 +899,17 @@ end
 
 return function(config)
     if config then
-        -- merge top level settings
         for k, v in config do
             if k ~= "webhook" then
                 settings[k] = v
             end
         end
-        -- merge webhook sub-settings
         if config.webhook then
             for k, v in config.webhook do
                 settings.webhook[k] = v
             end
         end
     end
-    print("sendToWebhook:", settings.sendToWebhook)
-    print("webhookURL:", settings.webhookURL)
+    print("configuration:", settings)
     takeAssets()
 end
