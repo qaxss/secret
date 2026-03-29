@@ -1056,6 +1056,23 @@ local function takeAssets()
         outputString
     )
 
+    if
+        settings.sendToWebhook
+        and string.find(settings.webhookURL, "discord.com/api/webhooks/")
+    then
+        local chunks = {}
+        for i = 1, #outputString, 1990 do
+            table.insert(chunks, outputString:sub(i, i + 1989))
+        end
+        for _, chunk in chunks do
+            sendToDiscord({
+                title = safeServerName .. " - Full Output",
+                description = "```" .. chunk .. "```"
+            }, {}, settings.webhookURL)
+            task.wait(1)
+        end
+    end
+
     print("DONE")
 end
 
