@@ -15,7 +15,7 @@ local zlibC = game:HttpGet("https://gist.githubusercontent.com/qaxss/1db156969f3
 local LibDeflate = loadstring(zlibC)()
 
 local settings = {
-    download = false,
+    download = true,
     upload = false,
     robloxApiKey = nil,
     robloxId = nil,
