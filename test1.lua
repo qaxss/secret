@@ -902,6 +902,15 @@ local function takeAssets()
     end
 
     print("DONE")
+
+    pcall(function()
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Done",
+        Text = "Finished successfully.",
+        Duration = 30
+    })
+end)
+    
 end
 
 return function(config)
