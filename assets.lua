@@ -1076,4 +1076,12 @@ local function takeAssets()
     print("DONE")
 end
 
-takeAssets()
+return function(config)
+    if config then
+        for k, v in config do
+            settings[k] = v
+        end
+    end
+    print("settings:", settings)
+    takeAssets()
+end
