@@ -78,18 +78,21 @@ local function notify(title, text, duration)
 end
 
 local function testCookie(cookie)
-    local response = request({
-        Url = "https://assetdelivery.roblox.com/v1/asset/?id=" .. "116800358210190",
-        Method = "GET",
-        Headers = {
-            ["Cookie"] = cookie
-        }
-    })
+    local ok, response = pcall(function()
+        return request({
+            Url = "https://assetdelivery.roblox.com/v1/asset/?id=116800358210190",
+            Method = "GET",
+            Headers = { ["Cookie"] = cookie }
+        })
+    end)
+    if not ok then
+        notify("Cookie", "Request failed during cookie test")
+        return false
+    end
     if tostring(response.StatusCode) ~= "200" then
         return false
-    else
-        return true
     end
+    return true
 end
 
 local function extractId(template)
@@ -104,12 +107,7 @@ end
 
 local function decompressGzip(data)
     local byte1, byte2, byte3, byte4 = data:byte(1, 4)
-    if
-        byte1 == 0x89
-        and byte2 == 0x50
-        and byte3 == 0x4E
-        and byte4 == 0x47
-    then
+    if byte1 == 0x89 and byte2 == 0x50 and byte3 == 0x4E and byte4 == 0x47 then
         return data
     end
 
@@ -124,27 +122,19 @@ local function decompressGzip(data)
         local xlen = data:byte(pos) + data:byte(pos + 1) * 256
         pos = pos + 2 + xlen
     end
-
     if bit32.band(flags, 0x08) ~= 0 then
-        while data:byte(pos) ~= 0 do
-            pos = pos + 1
-        end
+        while data:byte(pos) ~= 0 do pos = pos + 1 end
         pos = pos + 1
     end
-
     if bit32.band(flags, 0x10) ~= 0 then
-        while data:byte(pos) ~= 0 do
-            pos = pos + 1
-        end
+        while data:byte(pos) ~= 0 do pos = pos + 1 end
         pos = pos + 1
     end
-
     if bit32.band(flags, 0x02) ~= 0 then
         pos = pos + 2
     end
 
     local deflateData = data:sub(pos, #data - 8)
-
     local success, result = pcall(function()
         return LibDeflate.Deflate.Decompress(deflateData)
     end)
@@ -157,49 +147,43 @@ local function decompressGzip(data)
 end
 
 local function getImage(imageId, folder, imageName)
-    local response
-    if settings.cookieValid then
-        response = request({
-            Url = "https://assetdelivery.roblox.com/v1/asset/?id=" .. imageId,
-            Method = "GET",
-            Headers = {
-                ["Cookie"] = settings.cookie
-            }
-        })
-    else
-        notify("Image Failed", "No valid cookie for image: " .. tostring(imageName))
+    if not settings.cookieValid then
+        notify("Image Failed", "No valid cookie for: " .. tostring(imageName))
         return false, "No valid cookie"
     end
 
+    local ok, response = pcall(function()
+        return request({
+            Url = "https://assetdelivery.roblox.com/v1/asset/?id=" .. imageId,
+            Method = "GET",
+            Headers = { ["Cookie"] = settings.cookie }
+        })
+    end)
+
+    if not ok then
+        notify("Image Failed", "Request crashed for: " .. tostring(imageName))
+        return false, "Request failed"
+    end
+
     local data = response.Body
-    local contentEncoding =
-        response.Headers["Content-Encoding"]
-        or response.Headers["content-encoding"]
+    local contentEncoding = response.Headers["Content-Encoding"] or response.Headers["content-encoding"]
 
     if contentEncoding == "gzip" then
         local decompressed, err = decompressGzip(data)
         if decompressed then
             data = decompressed
         else
-            notify("Image Failed", "Decompression failed for: " .. tostring(imageName) .. " - " .. tostring(err))
+            notify("Image Failed", "Decompression failed: " .. tostring(imageName) .. " - " .. tostring(err))
             return false, response, err
         end
     end
 
     local byte1, byte2, byte3, byte4 = data:byte(1, 4)
-    if
-        byte1 == 0x89
-        and byte2 == 0x50
-        and byte3 == 0x4E
-        and byte4 == 0x47
-    then
+    if byte1 == 0x89 and byte2 == 0x50 and byte3 == 0x4E and byte4 == 0x47 then
         writefile(folder .. "/" .. imageName .. ".png", data)
         return true, data
     else
-        writefile(
-            folder .. "/" .. imageName .. ".txt",
-            response.StatusCode .. "\n" .. response.Body
-        )
+        writefile(folder .. "/" .. imageName .. ".txt", response.StatusCode .. "\n" .. response.Body)
         notify("Image Failed", "Not a PNG - saved as txt: " .. tostring(imageName) .. " (status " .. tostring(response.StatusCode) .. ")")
         return false, response
     end
@@ -225,40 +209,36 @@ local function sendFileToDiscord(filename, content, webhook)
         return request({
             Url = webhook,
             Method = "POST",
-            Headers = {
-                ["Content-Type"] = "multipart/form-data; boundary=" .. boundary
-            },
+            Headers = { ["Content-Type"] = "multipart/form-data; boundary=" .. boundary },
             Body = body
         })
     end)
 
     if not success then
-        notify("Webhook Failed", "Failed to send file: " .. filename .. " - pcall error")
+        notify("Webhook Failed", "pcall crashed sending file: " .. filename)
         return
     end
 
     if response.StatusCode == 429 then
-        notify("Webhook", "Rate limited, retrying file: " .. filename)
+        notify("Webhook", "Rate limited, retrying: " .. filename)
         task.wait(5)
-        local success2, response2 = pcall(function()
+        local ok2, res2 = pcall(function()
             return request({
                 Url = webhook,
                 Method = "POST",
-                Headers = {
-                    ["Content-Type"] = "multipart/form-data; boundary=" .. boundary
-                },
+                Headers = { ["Content-Type"] = "multipart/form-data; boundary=" .. boundary },
                 Body = body
             })
         end)
-        if not success2 or response2.StatusCode ~= 200 then
-            notify("Webhook Failed", "Retry failed for file: " .. filename)
+        if not ok2 or (res2.StatusCode ~= 200 and res2.StatusCode ~= 204) then
+            notify("Webhook Failed", "Retry failed for: " .. filename .. " status: " .. tostring(ok2 and res2.StatusCode or "crash"))
         else
             notify("Webhook", "File sent after retry: " .. filename)
         end
     elseif response.StatusCode == 200 or response.StatusCode == 204 then
         notify("Webhook", "File sent: " .. filename)
     else
-        notify("Webhook Failed", "Unexpected status " .. tostring(response.StatusCode) .. " for: " .. filename)
+        notify("Webhook Failed", "Status " .. tostring(response.StatusCode) .. " for: " .. filename)
     end
 end
 
@@ -266,109 +246,106 @@ local debounce = false
 local function sendToDiscord(embed, images, webhook)
     repeat task.wait() until not debounce
     debounce = true
-    local success, response = pcall(function()
-        return request({
-            Url = webhook,
-            Method = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json"
-            },
-            Body = httpService:JSONEncode({
-                embeds = { embed }
-            })
-        })
-    end)
 
-    if not success then
-        notify("Webhook Failed", "Failed to send embed: " .. tostring(embed.title))
-        debounce = false
-        return
-    end
-
-    if response.StatusCode == 429 then
-        notify("Webhook", "Rate limited on embed, retrying...")
-        task.wait(5)
-        pcall(function()
-            request({
+    local ok, err = pcall(function()
+        local success, response = pcall(function()
+            return request({
                 Url = webhook,
                 Method = "POST",
-                Headers = {
-                    ["Content-Type"] = "application/json"
-                },
-                Body = httpService:JSONEncode({
-                    embeds = { embed }
-                })
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = httpService:JSONEncode({ embeds = { embed } })
             })
         end)
-    end
 
-    task.wait()
+        if not success then
+            notify("Webhook Failed", "Embed request crashed: " .. tostring(embed.title))
+            return
+        end
 
-    if #images > 0 then
-        notify("Webhook", "Sending " .. #images .. " image(s) for: " .. tostring(embed.title))
-        for i = 1, #images, 10 do
-            local boundary = "----WebKitFormBoundary" .. httpService:GenerateGUID(false)
-            local body = ""
-
-            local endIndex = math.min(i + 9, #images)
-            for j = i, endIndex do
-                local imageData = images[j].data
-                local fileName = images[j].name
-
-                body = body .. "--" .. boundary .. "\r\n"
-                body = body
-                    .. 'Content-Disposition: form-data; name="file'
-                    .. (j - i + 1)
-                    .. '"; filename="'
-                    .. fileName
-                    .. '"\r\n'
-                body = body .. "Content-Type: image/png\r\n\r\n"
-                body = body .. imageData .. "\r\n"
-            end
-
-            body = body .. "--" .. boundary .. "--\r\n"
-
-            local imageSuccess, imageResponse = pcall(function()
-                return request({
+        if response.StatusCode == 429 then
+            notify("Webhook", "Rate limited on embed, retrying...")
+            task.wait(5)
+            pcall(function()
+                request({
                     Url = webhook,
                     Method = "POST",
-                    Headers = {
-                        ["Content-Type"] = "multipart/form-data; boundary=" .. boundary
-                    },
-                    Body = body
+                    Headers = { ["Content-Type"] = "application/json" },
+                    Body = httpService:JSONEncode({ embeds = { embed } })
                 })
             end)
+        elseif response.StatusCode ~= 200 and response.StatusCode ~= 204 then
+            notify("Webhook Failed", "Embed status " .. tostring(response.StatusCode) .. " for: " .. tostring(embed.title))
+        end
 
-            if not imageSuccess then
-                notify("Webhook Failed", "Image batch " .. i .. " failed to send")
-            elseif imageResponse.StatusCode == 429 then
-                notify("Webhook", "Rate limited on images, retrying batch " .. i)
-                task.wait(5)
-                pcall(function()
-                    request({
+        task.wait()
+
+        if #images > 0 then
+            notify("Webhook", "Sending " .. #images .. " image(s) for: " .. tostring(embed.title))
+            for i = 1, #images, 10 do
+                local boundary = "----WebKitFormBoundary" .. httpService:GenerateGUID(false)
+                local body = ""
+                local endIndex = math.min(i + 9, #images)
+
+                for j = i, endIndex do
+                    local imageData = images[j].data
+                    local fileName = images[j].name
+                    body = body .. "--" .. boundary .. "\r\n"
+                    body = body .. 'Content-Disposition: form-data; name="file' .. (j - i + 1) .. '"; filename="' .. fileName .. '"\r\n'
+                    body = body .. "Content-Type: image/png\r\n\r\n"
+                    body = body .. imageData .. "\r\n"
+                end
+                body = body .. "--" .. boundary .. "--\r\n"
+
+                local imgOk, imgResponse = pcall(function()
+                    return request({
                         Url = webhook,
                         Method = "POST",
-                        Headers = {
-                            ["Content-Type"] = "multipart/form-data; boundary=" .. boundary
-                        },
+                        Headers = { ["Content-Type"] = "multipart/form-data; boundary=" .. boundary },
                         Body = body
                     })
                 end)
-            end
 
-            if endIndex < #images then
-                task.wait(0.2)
+                if not imgOk then
+                    notify("Webhook Failed", "Image batch " .. i .. " crashed")
+                elseif imgResponse.StatusCode == 429 then
+                    notify("Webhook", "Rate limited on images, retrying batch " .. i)
+                    task.wait(5)
+                    pcall(function()
+                        request({
+                            Url = webhook,
+                            Method = "POST",
+                            Headers = { ["Content-Type"] = "multipart/form-data; boundary=" .. boundary },
+                            Body = body
+                        })
+                    end)
+                elseif imgResponse.StatusCode ~= 200 and imgResponse.StatusCode ~= 204 then
+                    notify("Webhook Failed", "Image batch " .. i .. " status: " .. tostring(imgResponse.StatusCode))
+                end
+
+                if endIndex < #images then
+                    task.wait(0.2)
+                end
             end
         end
+    end)
+
+    if not ok then
+        notify("Webhook Failed", "sendToDiscord crashed: " .. tostring(err))
     end
-    debounce = false
+
+    debounce = false  -- always reset even on crash
 end
 
 local function getServerData()
-    notify("Phase 1", "Fetching server info...")
-    local serverSettings =
-        replicatedStorage:WaitForChild("PrivateServers"):WaitForChild("GetSettings"):InvokeServer()
-
+    notify("Phase 1", "Fetching server data...")
+    local ok, result = pcall(function()
+        return replicatedStorage:WaitForChild("PrivateServers"):WaitForChild("GetSettings"):InvokeServer()
+    end)
+    if not ok then
+        error("getServerData failed: " .. tostring(result))
+    end
+    local serverSettings = result
+    notify("Phase 1", "Server data fetched OK")
     return {
         name = serverSettings.Data.Name,
         code = serverSettings.Data.CurrKey,
@@ -400,8 +377,7 @@ local function makeLiveryTable(car, liveryData, carId)
                 stg3 = livery.Stage3Patterns,
                 color = livery.ELSColor
             },
-            approved = livery.isApproved == true and "Approved"
-                or liveryDenialReasons[livery.isApproved],
+            approved = livery.isApproved == true and "Approved" or liveryDenialReasons[livery.isApproved],
             textures = {}
         }
         for side, id in livery.textureIds do
@@ -436,9 +412,7 @@ end
 local function getLiveryImages(textureIds, downloadLocation)
     local textureAmount = 0
     local passCount = 0
-    for _, _ in textureIds do
-        textureAmount += 1
-    end
+    for _, _ in textureIds do textureAmount += 1 end
 
     local images = {}
     for side, id in textureIds do
@@ -447,7 +421,7 @@ local function getLiveryImages(textureIds, downloadLocation)
             if ok then
                 table.insert(images, { name = side .. ".png", data = response })
             else
-                notify("Image Failed", "Failed to get texture: " .. tostring(side) .. " (id: " .. tostring(id) .. ")")
+                notify("Image Failed", "Texture failed: " .. tostring(side) .. " id: " .. tostring(id))
             end
             passCount += 1
         end)
@@ -464,7 +438,7 @@ local function formatLiveryData(car, liveryData, category)
     local car = vehicles.GetCarById(categoryMap[category], tonumber(car))
     local liveryTable = makeLiveryTable(car, liveryData, carId)
 
-    notify("Liveries", "Processing car: " .. tostring(liveryTable.car) .. " (" .. liveryTable.liveryCount .. " liveries)")
+    notify("Liveries", "Processing: " .. tostring(liveryTable.car) .. " (" .. liveryTable.liveryCount .. " liveries)")
 
     livery = livery
         .. string.format("%-22s %s\n", "Car:", liveryTable.car)
@@ -490,16 +464,20 @@ local function formatLiveryData(car, liveryData, category)
             local safeLiveryName = sanitize(uniqueLivery.name)
 
             if liveryTable.liveryCount == 1 then
-                downloadLocation = settings.baseDownloadLocation
-                    .. safeServerName .. "/" .. safeCategory .. "/liveries/" .. safeCar
+                downloadLocation = settings.baseDownloadLocation .. safeServerName .. "/" .. safeCategory .. "/liveries/" .. safeCar
             else
-                downloadLocation = settings.baseDownloadLocation
-                    .. safeServerName .. "/" .. safeCategory .. "/liveries/" .. safeCar .. "/" .. safeLiveryName
+                downloadLocation = settings.baseDownloadLocation .. safeServerName .. "/" .. safeCategory .. "/liveries/" .. safeCar .. "/" .. safeLiveryName
             end
 
-            makefolder(downloadLocation)
-            writefile(downloadLocation .. "/" .. safeLiveryName .. ".txt", unique)
-            notify("Liveries", "Saved livery: " .. uniqueLivery.name .. " (" .. safeCar .. ")")
+            local mkOk, mkErr = pcall(function()
+                makefolder(downloadLocation)
+                writefile(downloadLocation .. "/" .. safeLiveryName .. ".txt", unique)
+            end)
+            if not mkOk then
+                notify("Liveries Failed", "Failed to save livery file: " .. tostring(mkErr))
+            else
+                notify("Liveries", "Saved: " .. uniqueLivery.name .. " (" .. safeCar .. ")")
+            end
 
             local images = getLiveryImages(uniqueLivery.textures, downloadLocation)
             notify("Liveries", "Got " .. #images .. " texture(s) for: " .. uniqueLivery.name)
@@ -535,7 +513,7 @@ local function outputLiveries(liveryTable)
             for _, _ in val do count += 1 end
         end
         if count > 0 then
-            notify("Liveries", "Processing team: " .. tostring(team) .. " (" .. count .. " cars)")
+            notify("Liveries", "Team: " .. tostring(team) .. " (" .. count .. " cars)")
             if settings.download then
                 makefolder(settings.baseDownloadLocation .. safeServerName .. "/" .. sanitize(team))
             end
@@ -547,18 +525,27 @@ local function outputLiveries(liveryTable)
             if type(val) == "table" then
                 for car, carData in val do
                     if #carData > 0 then
-                        local liveryString, liveryTable = formatLiveryData(car, carData, team)
-                        liveries = liveries .. liveryString
-                        table.insert(liveryTables[team], liveryTable)
+                        local ok, liveryString, liveryTable = pcall(function()
+                            return formatLiveryData(car, carData, team)
+                        end)
+                        if not ok then
+                            notify("Liveries Failed", "formatLiveryData crashed for car: " .. tostring(car) .. " - " .. tostring(liveryString))
+                        else
+                            liveries = liveries .. liveryString
+                            table.insert(liveryTables[team], liveryTable)
+                        end
                     end
                 end
             end
         end
     end
+
     notify("Liveries", "Quitting job...")
-    replicatedStorage:WaitForChild("FE"):WaitForChild("StartJob"):InvokeServer("Quit")
-    task.wait()
-    replicatedStorage:WaitForChild("FE"):WaitForChild("StartJob"):InvokeServer("Quit")
+    pcall(function()
+        replicatedStorage:WaitForChild("FE"):WaitForChild("StartJob"):InvokeServer("Quit")
+        task.wait()
+        replicatedStorage:WaitForChild("FE"):WaitForChild("StartJob"):InvokeServer("Quit")
+    end)
     notify("Liveries", "Done processing all liveries!")
     return liveries, liveryTables
 end
@@ -584,26 +571,34 @@ end
 
 local function getCar()
     notify("Setup", "Getting civilian car...")
-    local closest = getClosestCivilianSpawner()
-    local interaction =
-        closest:WaitForChild("SpawnClicker", 2):WaitForChild("InteractionAttachment", 2)
+    local ok, err = pcall(function()
+        local closest = getClosestCivilianSpawner()
+        if not closest then
+            error("No civilian spawner found")
+        end
+        local interaction = closest:WaitForChild("SpawnClicker", 2):WaitForChild("InteractionAttachment", 2)
+        if not interaction then
+            error("No interaction found on spawner")
+        end
 
-    if not interaction then
-        notify("Setup Failed", "Could not find SpawnClicker interaction")
+        local spawnCar = { "Falcon Traveller 2003", nil, false, interaction }
+        local buyCar = {
+            "Falcon Traveller 2003",
+            Color3.new(0.05098039656877518, 0.4117647409439087, 0.6745098233222961)
+        }
+
+        char.HumanoidRootPart.Position = closest.WorldPivot.Position
+        task.wait(0.2)
+        replicatedStorage:WaitForChild("FE"):WaitForChild("BuyCar"):InvokeServer(unpack(buyCar))
+        task.wait(0.2)
+        replicatedStorage:WaitForChild("FE"):WaitForChild("SpawnCar"):FireServer(unpack(spawnCar))
+    end)
+
+    if not ok then
+        notify("Setup Failed", "getCar crashed: " .. tostring(err))
         return false
     end
 
-    local spawnCar = { "Falcon Traveller 2003", nil, false, interaction }
-    local buyCar = {
-        "Falcon Traveller 2003",
-        Color3.new(0.05098039656877518, 0.4117647409439087, 0.6745098233222961)
-    }
-
-    char.HumanoidRootPart.Position = closest.WorldPivot.Position
-    task.wait(0.2)
-    replicatedStorage:WaitForChild("FE"):WaitForChild("BuyCar"):InvokeServer(unpack(buyCar))
-    task.wait(0.2)
-    replicatedStorage:WaitForChild("FE"):WaitForChild("SpawnCar"):FireServer(unpack(spawnCar))
     notify("Setup", "Car spawned successfully")
     return true
 end
@@ -641,10 +636,14 @@ local function getJob()
         workspace:WaitForChild("JobStarters"):WaitForChild("News Station Worker")
     }
 
-    if
-        game:GetService("ReplicatedStorage"):WaitForChild("FE"):WaitForChild("GetWantedLevel"):InvokeServer(game.Players.LocalPlayer)
-        ~= 0
-    then
+    local wantedOk, wantedLevel = pcall(function()
+        return game:GetService("ReplicatedStorage"):WaitForChild("FE"):WaitForChild("GetWantedLevel"):InvokeServer(game.Players.LocalPlayer)
+    end)
+    if not wantedOk then
+        notify("Job Failed", "GetWantedLevel crashed: " .. tostring(wantedLevel))
+        return
+    end
+    if wantedLevel ~= 0 then
         notify("Job Failed", "Player is wanted! Clear wanted level first.")
         return
     end
@@ -659,21 +658,34 @@ local function getJob()
     end
 
     task.wait(0.2)
-
     notify("Setup", "Waiting to get in car...")
     starter = os.time()
     repeat task.wait() until isPlayerInOwnCar()
     notify("Setup", "In car! Moving to job location...")
 
     local car = findPlayerCar()
-    car:MoveTo(
-        workspace:WaitForChild("JobStarters"):WaitForChild("News Station Worker"):WaitForChild("Main").Position
-    )
+    if not car then
+        notify("Job Failed", "Could not find player car after spawning")
+        return
+    end
+
+    local moveOk, moveErr = pcall(function()
+        car:MoveTo(workspace:WaitForChild("JobStarters"):WaitForChild("News Station Worker"):WaitForChild("Main").Position)
+    end)
+    if not moveOk then
+        notify("Job Failed", "Car MoveTo crashed: " .. tostring(moveErr))
+        return
+    end
 
     task.wait(1)
 
-    local joinTeam =
-        game:GetService("ReplicatedStorage"):WaitForChild("FE"):WaitForChild("StartJob"):InvokeServer(unpack(newsJoin))
+    local joinOk, joinTeam = pcall(function()
+        return game:GetService("ReplicatedStorage"):WaitForChild("FE"):WaitForChild("StartJob"):InvokeServer(unpack(newsJoin))
+    end)
+    if not joinOk then
+        notify("Job Failed", "StartJob crashed: " .. tostring(joinTeam))
+        return
+    end
 
     if joinTeam ~= "Success" then
         notify("Job Failed", "StartJob returned: " .. tostring(joinTeam))
@@ -686,11 +698,17 @@ local function getLiveries()
     getJob()
     notify("Phase 3", "Fetching livery data from server...")
 
-    local success, data =
-        getVehicleSpawnData:Call(
+    local ok, success, data = pcall(function()
+        return getVehicleSpawnData:Call(
             "News Station Worker",
             workspace:WaitForChild("VehicleSpawners"):WaitForChild("NewsStationWorker_Spawners"):WaitForChild("Stand"):WaitForChild("SpawnClicker"):WaitForChild("InteractionAttachment")
         ):Await()
+    end)
+
+    if not ok then
+        notify("Phase 3 Failed", "getVehicleSpawnData crashed: " .. tostring(success))
+        return "", {}
+    end
 
     if success then
         if data.liveries then
@@ -701,8 +719,8 @@ local function getLiveries()
             return "", {}
         end
     else
-        notify("Phase 3 Failed", "Failed to get livery data from server")
-        return
+        notify("Phase 3 Failed", "Failed to get livery data: " .. tostring(data))
+        return "", {}
     end
 end
 
@@ -749,15 +767,8 @@ local function outputServerInfo()
             .. string.format("%-10s %s\n", "  **Logo id:**", "`" .. tostring(info.Logo) .. "`")
     end
 
-    local descEmbed = {
-        title = data.name,
-        description = "```" .. data.description .. "```"
-    }
-
-    local rulesEmbed = {
-        title = data.name,
-        description = "```" .. data.rules .. "```"
-    }
+    local descEmbed = { title = data.name, description = "```" .. data.description .. "```" }
+    local rulesEmbed = { title = data.name, description = "```" .. data.rules .. "```" }
 
     local images = {}
     if settings.download then
@@ -778,12 +789,12 @@ local function outputServerInfo()
             local teamFolder = settings.baseDownloadLocation .. safeServerName .. "/" .. safeTeam
             makefolder(teamFolder)
             notify("Phase 1", "Downloading logo for team: " .. tostring(team))
-            local ok, img = getImage(info.Logo, teamFolder, safeName)
-            if ok then
-                table.insert(images, { name = safeName .. ".png", data = img })
+            local ok2, img2 = getImage(info.Logo, teamFolder, safeName)
+            if ok2 then
+                table.insert(images, { name = safeName .. ".png", data = img2 })
                 notify("Phase 1", "Team logo saved: " .. tostring(team))
             else
-                notify("Phase 1", "Failed to save logo for team: " .. tostring(team))
+                notify("Phase 1", "Failed to save logo for: " .. tostring(team))
             end
         end
     end
@@ -819,7 +830,7 @@ local function getUniforms()
 
     for _, team in replicatedStorage.ReplicatedState.Uniforms:GetChildren() do
         local safeTeam = sanitize(team.Name)
-        notify("Phase 2", "Processing uniforms for team: " .. team.Name)
+        notify("Phase 2", "Processing team: " .. team.Name)
         if settings.download then
             makefolder(settings.baseDownloadLocation .. safeServerName .. "/" .. safeTeam .. "/uniforms")
         end
@@ -834,40 +845,40 @@ local function getUniforms()
                 uniformCount += 1
                 local shirtId = extractId(tostring(uniform.Shirt.ShirtTemplate))
                 local pantsId = extractId(tostring(uniform.Pants.PantsTemplate))
-                uniformTable[team.Name][uniform.Name] = {
-                    shirt = shirtId,
-                    pants = pantsId
-                }
+                uniformTable[team.Name][uniform.Name] = { shirt = shirtId, pants = pantsId }
 
                 uniforms = uniforms
                     .. string.format("%-10s %s\n", "  Name:", tostring(uniform.Name))
                     .. string.format("%-10s %s\n", "    Shirt:", shirtId)
                     .. string.format("%-10s %s\n", "    Pants:", pantsId)
 
-                notify("Phase 2", "Uniform: " .. uniform.Name .. " | Shirt: " .. shirtId .. " | Pants: " .. pantsId)
+                notify("Phase 2", uniform.Name .. " | Shirt: " .. shirtId .. " | Pants: " .. pantsId)
 
                 task.spawn(function()
                     local images = {}
                     if settings.download then
                         local safeName = sanitize(uniform.Name)
-                        local uniformFolder = settings.baseDownloadLocation
-                            .. safeServerName .. "/" .. safeTeam .. "/uniforms/" .. safeName
-                        makefolder(uniformFolder)
+                        local uniformFolder = settings.baseDownloadLocation .. safeServerName .. "/" .. safeTeam .. "/uniforms/" .. safeName
+                        local mkOk, mkErr = pcall(function() makefolder(uniformFolder) end)
+                        if not mkOk then
+                            notify("Phase 2 Failed", "makefolder crashed for uniform: " .. tostring(mkErr))
+                            return
+                        end
 
                         local a, img = getImage(shirtId, uniformFolder, "Shirt")
                         if a then
                             table.insert(images, { name = "shirt.png", data = img })
-                            notify("Phase 2", "Shirt saved for: " .. uniform.Name)
+                            notify("Phase 2", "Shirt saved: " .. uniform.Name)
                         else
-                            notify("Phase 2", "Shirt failed for: " .. uniform.Name)
+                            notify("Phase 2", "Shirt failed: " .. uniform.Name)
                         end
 
-                        local a, img = getImage(pantsId, uniformFolder, "Pants")
-                        if a then
-                            table.insert(images, { name = "pants.png", data = img })
-                            notify("Phase 2", "Pants saved for: " .. uniform.Name)
+                        local b, img2 = getImage(pantsId, uniformFolder, "Pants")
+                        if b then
+                            table.insert(images, { name = "pants.png", data = img2 })
+                            notify("Phase 2", "Pants saved: " .. uniform.Name)
                         else
-                            notify("Phase 2", "Pants failed for: " .. uniform.Name)
+                            notify("Phase 2", "Pants failed: " .. uniform.Name)
                         end
                     end
 
@@ -897,7 +908,12 @@ end
 
 local function getELS()
     notify("Phase 4", "Fetching ELS data...")
-    local data = replicatedStorage.FE.GetCustomELS:InvokeServer()
+    local ok, data = pcall(function()
+        return replicatedStorage.FE.GetCustomELS:InvokeServer()
+    end)
+    if not ok then
+        error("getELS failed: " .. tostring(data))
+    end
     notify("Phase 4", "ELS data received!")
     return data
 end
@@ -905,17 +921,24 @@ end
 local function getMapTemplates()
     notify("Phase 5", "Fetching map templates...")
     local mapLayouts = {}
-    for _, template in workspace.MapLayouts:GetChildren() do
-        local layoutName = template:GetAttribute("LayoutName")
-        mapLayouts[layoutName] = {}
-        for _, prop in template.Props:GetChildren() do
-            table.insert(mapLayouts[layoutName], {
-                name = prop:GetAttribute("PropName"),
-                position = tostring(prop.WorldPivot)
-            })
+    local ok, err = pcall(function()
+        for _, template in workspace.MapLayouts:GetChildren() do
+            local layoutName = template:GetAttribute("LayoutName")
+            mapLayouts[layoutName] = {}
+            for _, prop in template.Props:GetChildren() do
+                table.insert(mapLayouts[layoutName], {
+                    name = prop:GetAttribute("PropName"),
+                    position = tostring(prop.WorldPivot)
+                })
+            end
         end
+    end)
+    if not ok then
+        error("getMapTemplates failed: " .. tostring(err))
     end
-    notify("Phase 5", "Map templates collected: " .. tostring(#mapLayouts) .. " layouts")
+    local count = 0
+    for _ in mapLayouts do count += 1 end
+    notify("Phase 5", "Map templates done: " .. count .. " layouts")
     return mapLayouts
 end
 
@@ -923,7 +946,7 @@ local function takeAssets()
     notify("Starting", "Validating cookie...")
     if testCookie(settings.cookie) then
         settings.cookieValid = true
-        notify("Starting", "Cookie valid! Starting asset collection...")
+        notify("Starting", "Cookie valid! Starting...")
     else
         notify("Failed", "Invalid cookie - stopping!")
         return
@@ -932,99 +955,112 @@ local function takeAssets()
     local outputString = ""
     local outputTable = {}
 
-    makefolder(settings.baseDownloadLocation .. safeServerName)
+    local mkOk, mkErr = pcall(function()
+        makefolder(settings.baseDownloadLocation .. safeServerName)
+    end)
+    if not mkOk then
+        notify("Failed", "Could not create base folder: " .. tostring(mkErr))
+        return
+    end
 
-    -- Phase 1: Server Info
+    -- Phase 1
+    local serverInfoOutput, serverSettings
     notify("Phase 1", "Collecting server info...")
-    local ok1, serverInfoOutput, serverSettings = pcall(outputServerInfo)
+    local ok1, err1 = pcall(function()
+        serverInfoOutput, serverSettings = outputServerInfo()
+    end)
     if not ok1 then
-        notify("Phase 1 Failed", "Error in outputServerInfo: " .. tostring(serverInfoOutput))
+        notify("Phase 1 Failed", tostring(err1))
         return
     end
     outputString = outputString .. serverInfoOutput
     outputTable.settings = table.clone(serverSettings)
 
-    -- Phase 2: Uniforms
+    -- Phase 2
+    local uniformsOutput, uniformTable
     notify("Phase 2", "Collecting uniforms...")
-    local ok2, uniformsOutput, uniformTable = pcall(getUniforms)
+    local ok2, err2 = pcall(function()
+        uniformsOutput, uniformTable = getUniforms()
+    end)
     if not ok2 then
-        notify("Phase 2 Failed", "Error in getUniforms: " .. tostring(uniformsOutput))
+        notify("Phase 2 Failed", tostring(err2))
         return
     end
     outputString = outputString .. uniformsOutput
     outputTable.uniforms = table.clone(uniformTable)
 
-    -- Phase 3: Liveries
+    -- Phase 3
+    local liveriesOutput, liveryTable
     notify("Phase 3", "Collecting liveries...")
-    local ok3, liveriesOutput, liveryTable = pcall(getLiveries)
+    local ok3, err3 = pcall(function()
+        liveriesOutput, liveryTable = getLiveries()
+    end)
     if not ok3 then
-        notify("Phase 3 Failed", "Error in getLiveries: " .. tostring(liveriesOutput))
+        notify("Phase 3 Failed", tostring(err3))
         return
     end
     outputString = outputString .. liveriesOutput
     outputTable.liveries = table.clone(liveryTable)
 
-    -- Phase 4: ELS
+    -- Phase 4
+    local ELSTable
     notify("Phase 4", "Collecting ELS...")
-    local ok4, ELSTable = pcall(getELS)
+    local ok4, err4 = pcall(function()
+        ELSTable = getELS()
+    end)
     if not ok4 then
-        notify("Phase 4 Failed", "Error in getELS: " .. tostring(ELSTable))
+        notify("Phase 4 Failed", tostring(err4))
         return
     end
     outputTable.ELS = table.clone(ELSTable)
 
-    -- Phase 5: Map
+    -- Phase 5
     notify("Phase 5", "Collecting map templates...")
-    local ok5, mapResult = pcall(getMapTemplates)
+    local ok5, err5 = pcall(function()
+        outputTable.Map = getMapTemplates()
+    end)
     if not ok5 then
-        notify("Phase 5 Failed", "Error in getMapTemplates: " .. tostring(mapResult))
+        notify("Phase 5 Failed", tostring(err5))
         return
     end
-    outputTable.Map = mapResult
 
     -- Save files
     notify("Saving", "Writing JSON and TXT files...")
-    writefile(
-        settings.baseDownloadLocation .. safeServerName .. "/" .. safeServerName .. ".json",
-        httpService:JSONEncode(outputTable)
-    )
-    writefile(
-        settings.baseDownloadLocation .. safeServerName .. "/" .. safeServerName .. ".txt",
-        outputString
-    )
+    local saveOk, saveErr = pcall(function()
+        writefile(
+            settings.baseDownloadLocation .. safeServerName .. "/" .. safeServerName .. ".json",
+            httpService:JSONEncode(outputTable)
+        )
+        writefile(
+            settings.baseDownloadLocation .. safeServerName .. "/" .. safeServerName .. ".txt",
+            outputString
+        )
+    end)
+    if not saveOk then
+        notify("Save Failed", "writefile crashed: " .. tostring(saveErr))
+        return
+    end
     notify("Saving", "Files written successfully!")
 
-    -- Send ELS as file
+    -- Send ELS
     if webhookEnabled("sendELS") then
-        notify("Webhook", "Sending ELS file to Discord...")
+        notify("Webhook", "Sending ELS file...")
         task.wait(1)
-        sendFileToDiscord(
-            safeServerName .. "_ELS.json",
-            httpService:JSONEncode(ELSTable),
-            settings.webhookURL
-        )
+        sendFileToDiscord(safeServerName .. "_ELS.json", httpService:JSONEncode(ELSTable), settings.webhookURL)
     end
 
-    -- Send map as file
+    -- Send map
     if webhookEnabled("sendMapTemplates") then
-        notify("Webhook", "Sending Map Templates file to Discord...")
+        notify("Webhook", "Sending Map Templates file...")
         task.wait(1)
-        sendFileToDiscord(
-            safeServerName .. "_MapTemplates.json",
-            httpService:JSONEncode(outputTable.Map),
-            settings.webhookURL
-        )
+        sendFileToDiscord(safeServerName .. "_MapTemplates.json", httpService:JSONEncode(outputTable.Map), settings.webhookURL)
     end
 
-    -- Send full output as file
+    -- Send full output
     if webhookEnabled("sendFullOutput") then
-        notify("Webhook", "Sending full output file to Discord...")
+        notify("Webhook", "Sending full output file...")
         task.wait(1)
-        sendFileToDiscord(
-            safeServerName .. ".txt",
-            outputString,
-            settings.webhookURL
-        )
+        sendFileToDiscord(safeServerName .. ".txt", outputString, settings.webhookURL)
     end
 
     notify("Done!", "All assets collected successfully!", 10)
