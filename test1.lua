@@ -860,9 +860,16 @@ local function takeAssets()
         httpService:JSONEncode(outputTable)
     )
     writefile(
-        settings.baseDownloadLocation .. safeServerName .. "/" .. safeServerName .. ".txt",
-        outputString
-    )
+    settings.baseDownloadLocation .. safeServerName .. "/" .. safeServerName .. ".txt",
+[[                    .___       ___.                               .___                             ____     ____.__                  
+  _____ _____     __| _/____   \_ |__ ___.__.      ____  ____   __| _/____ _______  ____________  /  _ \   /_   |  |____________  ___
+ /     \\__  \   / __ |/ __ \   | __ <   |  |    _/ ___\/ __ \ / __ |\__  \\_  __ \/ ___\___   /  >  _ </\  |   |  |  \_  __ \  \/  /
+|  Y Y  \/ __ \_/ /_/ \  ___/   | \_\ \___  |    \  \__\  ___// /_/ | / __ \|  | \/ /_/  >    /  /  <_\ \/  |   |   Y  \  | \/>    < 
+|__|_|  (____  /\____ |\___  >  |___  / ____|  /\ \___  >___  >____ |(____  /__|  \___  /_____ \ \_____\ \  |___|___|  /__|  /__/\_ \
+      \/     \/      \/    \/       \/\/       \/     \/    \/     \/     \/     /_____/      \/        \/           \/            \/
+
+]] .. outputString
+)
 
     -- Send ELS as a file
     if webhookEnabled("sendELS") then
