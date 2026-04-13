@@ -207,10 +207,9 @@ local function main()
     end
 end
 
--- Execute directly instead of returning a function
-if game:GetService("Players").LocalPlayer then
-    local config = (...)
-    if type(config) == "table" then
+-- FIXED: Properly capture the config passed to the returned function
+local function startScript(config)
+    if config then
         for k, v in pairs(config) do
             if k ~= "webhook" then
                 settings[k] = v
@@ -229,3 +228,6 @@ if game:GetService("Players").LocalPlayer then
         print("Fatal Error:", err)
     end
 end
+
+-- Return the function that accepts the config
+return startScript
