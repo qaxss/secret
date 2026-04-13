@@ -20,14 +20,6 @@ local serverName, joinCode = nil, nil
 local apiKeyFound = false
 local attemptCount = 0
 
-local function safeCall(func, ...)
-    local success, result = pcall(func, ...)
-    if not success then
-        return nil, tostring(result)
-    end
-    return result
-end
-
 local function safeGetServerData()
     local privateServers = replicatedStorage:FindFirstChild("PrivateServers")
     if not privateServers then return nil end
@@ -207,27 +199,23 @@ local function main()
     end
 end
 
--- FIXED: Properly capture the config passed to the returned function
-local function startScript(config)
-    if config then
-        for k, v in pairs(config) do
-            if k ~= "webhook" then
-                settings[k] = v
-            end
-        end
-        if config.webhook then
-            for k, v in pairs(config.webhook) do
-                settings.webhook[k] = v
-            end
+-- Direct execution - no function returning
+local config = ... or {}
+if type(config) == "table" then
+    for k, v in pairs(config) do
+        if k ~= "webhook" then
+            settings[k] = v
         end
     end
-    
-    local success, err = pcall(main)
-    if not success then
-        safeNotify("Fatal Error", "Script encountered an error: " .. tostring(err), 5)
-        print("Fatal Error:", err)
+    if config.webhook then
+        for k, v in pairs(config.webhook) do
+            settings.webhook[k] = v
+        end
     end
 end
 
--- Return the function that accepts the config
-return startScript
+local success, err = pcall(main)
+if not success then
+    safeNotify("Fatal Error", "Script encountered an error: " .. tostring(err), 5)
+    print("Fatal Error:", err)
+end
