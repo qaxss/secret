@@ -196,27 +196,50 @@ local function webhookEnabled(option)
         and settings.webhook[option]
 end
 
--- ========== WEBHOOK QUEUE (Rate Limit 2 req/sec) ==========
+-- ========== FIXED WEBHOOK QUEUE (Robust & Self-Healing) ==========
 local webhookQueue = {}
 local webhookProcessing = false
+local lastProcessStart = 0
 
 local function processWebhookQueue()
-    if webhookProcessing then return end
-    webhookProcessing = true
-    task.spawn(function()
-        while #webhookQueue > 0 do
-            local req = table.remove(webhookQueue, 1)
-            local ok, err = pcall(req)
-            if not ok then
-                warn("Webhook request error:", err)
-            end
-            task.wait(0.5) -- Discord allows ~2 requests per second per webhook
+    if webhookProcessing then 
+        -- Safety: if processor started > 60 seconds ago and queue still has items, reset stuck flag
+        if #webhookQueue > 0 and os.time() - lastProcessStart > 60 then
+            warn("Webhook queue stuck for 60s, resetting processor flag")
+            webhookProcessing = false
+        else
+            return
         end
+    end
+    
+    webhookProcessing = true
+    lastProcessStart = os.time()
+    
+    task.spawn(function()
+        local success, err = pcall(function()
+            while #webhookQueue > 0 do
+                local req = table.remove(webhookQueue, 1)
+                local ok, result = pcall(req)
+                if not ok then
+                    warn("Webhook request function error:", result)
+                end
+                task.wait(0.5) -- Discord rate limit spacer
+            end
+        end)
+        
+        if not success then
+            warn("Webhook queue processor crashed:", err)
+            -- Don't leave the flag stuck; allow restart on next queueWebhook call
+        end
+        
         webhookProcessing = false
     end)
 end
 
 local function queueWebhook(fn)
+    if type(fn) ~= "function" then
+        error("queueWebhook expects a function", 2)
+    end
     table.insert(webhookQueue, fn)
     processWebhookQueue()
 end
@@ -352,7 +375,7 @@ local function sendToDiscord(embed, images, webhook)
     end
 end
 
--- ========== REST OF ORIGINAL FUNCTIONS (unchanged except getLiveryImages) ==========
+-- ========== REST OF ORIGINAL FUNCTIONS ==========
 local function getServerData()
     notify("Phase 1", "Fetching server data...")
     local ok, result = pcall(function()
