@@ -3,7 +3,7 @@ local httpService = game:GetService("HttpService")
 local function getServerToJoin()
     local servers = httpService:JSONDecode(readfile("asset taker/servers.json"))
     local join = nil
-    for key, val in servers do
+    for key, val in pairs(servers) do
         if val == false then
             join = key
             break
@@ -63,7 +63,7 @@ local function checkServerList()
     end
     if not found then
         local servers = game:GetService("ReplicatedStorage").PrivateServers.GetServers:InvokeServer()
-        for _, server in servers do
+        for _, server in pairs(servers) do
             if type(server) == "table" and server.LiveryPack and not server.Locked and server.TierRequirement == 0 and server.GroupJoin == 0 then
                 out[server.CurrKey] = false
             end
